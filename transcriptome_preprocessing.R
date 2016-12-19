@@ -3,13 +3,10 @@
 
 ########################################################################
 ### Header
-########################################################################
-
 library(ggplot2)
 
 ########################################################################
 ### Functions
-########################################################################
 convertIDs <- function(dataframe) {                      # Remove the decimal from Ensembl IDs
   ensemblIDs <- c()
   for (rowName in row.names(dataframe)) {
@@ -19,112 +16,226 @@ convertIDs <- function(dataframe) {                      # Remove the decimal fr
   row.names(dataframe)<-ensemblIDs                       # Replace the rownames with new ones
   return(dataframe)
 }
-
 addMedSD <- function(dataframe) {
   median <- apply(dataframe,1,median)
   sd <- apply(dataframe,1,sd)
   return(data.frame(dataframe,median,sd))  
 }
-
 sortByMed <- function(dataframe) {
   order <- order(dataframe$median,decreasing=TRUE)
   return(dataframe[order,])
 }
-addGene <- function(dataframe) {
-  genes <- getBM(attributes=c('ensembl_gene_id','external_gene_name'), filters='ensembl_gene_id', values=row.names(dataframe), mart=ensembl)
-  genes <- genes[match(row.names(dataframe),genes[,1]),]
-  Gene <- c()
-  for (rowNumber in 1:length(genes[,1])) {
-    newGene <- genes[rowNumber,][,2]
-    Gene <- c(Gene, newGene)
-  }
-  dataframe[length(dataframe)+1] <- Gene
-  names(dataframe)[ncol(dataframe)] <- "Gene"
-  return(dataframe)
-}
 ########################################################################
 ### Data input
-########################################################################
+### Import sample key
+sample.key <- read.csv('Z:/Data/Andrew/reference_data/gtex/Sample.key.sorted.csv',header=TRUE)
 
 ### Import transcriptome location table
 transcriptome.index <- read.csv("Z:/Data/Andrew/reference_data/gtex/transcriptome_tables_by_tissue/transcriptome.index.csv")
 print(transcriptome.index[1])
-selection <- 3
-print(transcriptome.index[,1][selection])
+selection <- 2
+selected.tissue <- as.character(transcriptome.index[,1][selection])
+print(selected.tissue)
 
 ### Import transcriptome of specific tissue
-#transcriptome <- read.delim('Z:/Data/Andrew/reference_data/gtex/transcriptome_tables_by_tissue/adrenalgland')
 trans.df <- read.delim(as.character(transcriptome.index$file.locations[selection]))  # Load selected dataset (may take >10s)
-
-### Import sample key
-sample.key <- read.csv('Z:/Data/Andrew/reference_data/gtex/Sample.key.sorted.csv',header=TRUE)
 
 ########################################################################
 ### Formatting
-########################################################################
-### Format names
+### Validate references are from correct tissue
+sample.key.filtered <- sample.key[sample.key$Tissue.Specific == selected.tissue,]    # Filter the sample key to include only selected tissue
+matched <- match(names(trans.df),sample.key.filtered$Sample_ID)  # Match reference column names to filtered sample key
+matched <- matched[!is.na(matched)]                              # Remove non-matches.  There should be just two.
+nrow(sample.key.filtered) == length(matched)                     # Report whether the sample names match up with the sample IDs for the selected tissue
 
-matched <- match(sample.key$Sample_ID,names(trans.df))           # Match the sample IDs in the sample key with IDs in the current file
-matched.2 <- matched[!is.na(matched)]                            # Retain non-na matches
-
-new.names <- as.vector(sample.key$unique.names[matched.2])       # Generate a list of new names
-names(trans.df)[3:ncol(trans.df)] <- new.names                   # Assign the new names to the current samples
+### Rename rows by ensembl IDs w/o decimal
+row.names(trans.df) <- trans.df$Name
+trans.df <- convertIDs(trans.df)
 
 ########################################################################
 ### Add med and SD
-
-trans.med <- addMedSD(trans.df[3:ncol(trans.df)])                # Make new DF with median & sd
-ncol(trans.med)
-
-med.v.sd <- trans.med[146:147]                                   # Make new DF with just median & sd
-
-med.v.sd$ratio <- med.v.sd$median/med.v.sd$sd                    # Add ratio column to med-sd df
+trans.df <- addMedSD(trans.df[3:ncol(trans.df)])                # Make new DF with median & sd
 
 ########################################################################
+### Plot, unfiltered
+#ggplot(data = log10(trans.df),aes(x = median, y = sd)) + geom_point(size = 0.5) + theme_light() +geom_smooth(method = lm)
+
+########################################################################
+### Filter by expression value
+### Filter rows with any zeros
+zero.mins <- which(apply(trans.df,1,min) == 0)                  # Generate list of rows with at least one occurence of no detection
+trans.df <- trans.df[-zero.mins,]                               # Remove rows with one occurrence of no detection
+summary(trans.df$median)                                        # Report the new range of values
+
 ### Log transform
+trans.df.log <- log10(trans.df)                                 # Log transform
 
-med.v.sd <- log(med.v.sd+1)                                      # Log transform
+### Plot 2, after first filter
+#ggplot(data = trans.df.log,aes(x = median, y = sd)) + geom_point(size = 0.5) + theme_light() + geom_smooth(method = lm)
 
 ########################################################################
-### Plot log med. vs. log SD
-########################################################################
+### Filter out lowest tenth percentile
+tenth.perc <- quantile(trans.df.log$median, 0.1)                # Calculate the hightes expression within the lowest tenth percentile
+trans.df.log <- trans.df.log[-which(trans.df.log$median <= tenth.perc),] # Remove all genes contained in lowest tenth percentile
 
-plot(log(med.v.sd$median),log(med.v.sd$sd),pch=20,cex = 1)      # Plot crudely
+### Prune all except med.v.sd
+med.v.sd <- trans.df.log[(ncol(trans.df.log)-1):ncol(trans.df.log)] # Generate a data frame containing only the median and SD columns
+summary(med.v.sd)
 
-ggplot(data = med.v.sd,aes(x = median, y = sd)) +
-  geom_point() +
+### Plot 3, after second filter
+ggplot(data = med.v.sd, aes(x = median, y = sd)) +
+  geom_point(size = 0.5) + theme_light() +
   geom_smooth(method = lm)
-  
-ggplot(data = med.v.sd,aes(x = median, y = sd)) +
-  geom_point() +
-  geom_abline(intercept = -1, slope = 1, col = 'blue') +
-  geom_abline(intercept = -1.5, slope = 1.2, col = 'red') +
-  geom_abline(intercept = -1.5, slope = 1.15, col = 'green')
 
 ########################################################################
-### Highlight points beneath red line
+### Calculate slopes & intercepts for cutoff values
+#med.v.sd.offset <- med.v.sd + 0.5                               # Generate a new data frame containing the median and SD with a 0.5 offset
+offset <- min(med.v.sd$median)
+med.v.sd.offset <- med.v.sd - offset                             # Generate a new data frame containing the median and SD with a 0.5 offset
 
-med.v.sd$ratio <- med.v.sd$median/med.v.sd$sd
-selected <- which((med.v.sd$median - 1.4)/med.v.sd$sd <= 1/1.15)
-selected <- which((med.v.sd$median - 1.4)/med.v.sd$sd >= 1/1.15)
+### Calculate intercepts at 0.5
+near.point.five <- med.v.sd.offset[med.v.sd.offset$median > 0.5 &med.v.sd.offset$median < 0.6,]
+summary(near.point.five)
 
-med.v.sd$selected <- FALSE
-med.v.sd$selected[selected] <- TRUE
+sd.75.at.point.five <- as.numeric(quantile(near.point.five$sd, 0.75)) # Green
+sd.50.at.point.five <- as.numeric(quantile(near.point.five$sd, 0.50)) # Blue
+sd.05.at.point.five <- as.numeric(quantile(near.point.five$sd, 0.05)) # Purple
+sd.01.at.point.five <- as.numeric(quantile(near.point.five$sd, 0.01)) # Red
 
-ggplot(data = med.v.sd,aes(x = median, y = sd)) +
-  geom_point(aes(col = selected)) +
-  geom_abline(intercept = -1.5, slope = 1.15, col = 'red')
+### Calculate intercepts at 2.5
+near.2.5 <- med.v.sd.offset[med.v.sd.offset$median > 2.4 &med.v.sd.offset$median < 2.6,]
+summary(near.2.5)
 
-### Filter for low SD genes
+sd.99.at.2.5 <- as.numeric(quantile(near.2.5$sd, 0.99))               # Green
+sd.95.at.2.5 <- as.numeric(quantile(near.2.5$sd, 0.95))               # Blue
+sd.75.at.2.5 <- as.numeric(quantile(near.2.5$sd, 0.75))               # Purple
+sd.50.at.2.5 <- as.numeric(quantile(near.2.5$sd, 0.50))               # Red
 
-trans.df.filt <- trans.df[selected,]
+### Calculate slopes
+slope.green <- (sd.99.at.2.5 - sd.75.at.point.five) / 2               # Green
+slope.blue <- (sd.95.at.2.5 - sd.50.at.point.five) / 2                # Blue
+slope.purple <- (sd.75.at.2.5 - sd.05.at.point.five) / 2              # Purple
+slope.red <- (sd.50.at.2.5 - sd.01.at.point.five) / 2                 # Red
 
-### SCRATCH WORK
-#trans.dist <- dist(med.v.sd$median)
+### Calculate intercepts at zero
+intercept.green <- sd.75.at.point.five - slope.green * 0.5            # Green
+intercept.blue <- sd.50.at.point.five - slope.blue * 0.5              # Blue
+intercept.purple <- sd.05.at.point.five - slope.purple * 0.5          # Purple
+intercept.red <- sd.01.at.point.five - slope.red * 0.5                # Red
 
-plot(trans.dist)
+### Plot 4, after adding cutoff lines
+(final.plot <- ggplot(data = med.v.sd.offset,aes(x = median, y = sd)) +
+  geom_point(size = 0.5) +
+  geom_abline(intercept = intercept.green, slope = slope.green, col = 'green', size = 1) +
+  geom_abline(intercept = intercept.blue, slope = slope.blue, col = 'blue', size = 1) +
+  geom_abline(intercept = intercept.purple, slope = slope.purple, col = 'purple', size = 1) +
+  geom_abline(intercept = intercept.red, slope = slope.red, col = 'red', size = 1) +
+  annotate("text", label = nrow(med.v.sd.loose), x = 1, y = 3, size = 6, colour = "green4") +
+  annotate("text", label = nrow(med.v.sd.neutral), x = 1.5, y = 2.6, size = 6, colour = "blue4") +
+  annotate("text", label = nrow(med.v.sd.tight), x = 2.5, y = 0.9, size = 6, colour = "purple4") +
+  annotate("text", label = nrow(med.v.sd.supertight), x = 3, y = 0.5, size = 6, colour = "red4") +
+  labs(title = selected.tissue) +
+  theme_light())
 
-hist(med.v.sd$median)
-plot(hist(log2(med.v.sd$ratio),bi))
+########################################################################
+### Generate four filtered sets
+med.v.sd.loose <- med.v.sd[(med.v.sd.offset$sd - intercept.green)/med.v.sd.offset$median <= slope.green,]
+med.v.sd.neutral <- med.v.sd[(med.v.sd.offset$sd - intercept.blue)/med.v.sd.offset$median <= slope.blue,]
+med.v.sd.tight <- med.v.sd[(med.v.sd.offset$sd - intercept.purple)/med.v.sd.offset$median <= slope.purple,]
+med.v.sd.supertight <- med.v.sd[(med.v.sd.offset$sd - intercept.red)/med.v.sd.offset$median <= slope.red,]
 
-hist(log(med.v.sd$ratio,100),plot=TRUE,breaks=60)
+########################################################################
+### Add filtered median expression sets to each of four dataframes
+### Open tables containing all tissue for each level
+gtex.low.sd.loose <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.loose.csv', row.names = 1)
+gtex.low.sd.neutral <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.neutral.csv', row.names = 1)
+gtex.low.sd.tight <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.tight.csv', row.names = 1)
+gtex.low.sd.supertight <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.supertight.csv', row.names = 1)
+
+### Find the positions in the full tables of the genes remaining in the filtered tables
+positions.loose <- match(row.names(med.v.sd.loose),row.names(gtex.low.sd.loose))
+positions.neutral <- match(row.names(med.v.sd.neutral),row.names(gtex.low.sd.neutral))
+positions.tight <- match(row.names(med.v.sd.tight),row.names(gtex.low.sd.tight))
+positions.supertight <- match(row.names(med.v.sd.supertight),row.names(gtex.low.sd.supertight))
+
+### Declare selected tissue
+print(selected.tissue)
+
+### Paste the new values into the full tables
+gtex.low.sd.loose[selected.tissue][positions.loose,] <- med.v.sd.loose$median
+gtex.low.sd.neutral[selected.tissue][positions.neutral,] <- med.v.sd.neutral$median
+gtex.low.sd.tight[selected.tissue][positions.tight,] <- med.v.sd.tight$median
+gtex.low.sd.supertight[selected.tissue][positions.supertight,] <- as.vector(med.v.sd.supertight$median)
+
+### Save updated tables
+write.csv(gtex.low.sd.loose, 'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.loose.csv')
+write.csv(gtex.low.sd.neutral, 'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.neutral.csv')
+write.csv(gtex.low.sd.tight, 'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.tight.csv')
+write.csv(gtex.low.sd.supertight, 'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.supertight.csv')
+
+### Update tracking file
+tracking.file <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/tracking.file.csv',row.names = 1)
+tracking.file <- rbind(tracking.file,c(selected.tissue, strftime(Sys.time(),"%a%b%d%H%M")))
+write.csv(tracking.file,'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/tracking.file.csv')
+
+### Save plot
+png(filename=paste0('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/plot.',selected.tissue,'.png'), 
+    type="cairo",
+    units="in", 
+    width=8, 
+    height=6, 
+    pointsize=12, 
+    res=100)
+final.plot
+dev.off()
+
+
+
+
+########################################################################
+### Useful code not needed in this script
+########################################################################
+
+### Rename all references based on reference tissue
+matched <- !is.na(match(sample.key$Sample_ID,names(trans.df.log)))   # Match the sample IDs in the sample key with IDs in the current file
+new.names <- as.vector(sample.key$unique.names[matched.2])       # Generate a list of new, unique names
+names(trans.df.log)[3:ncol(trans.df)] <- new.names                   # Assign the new names to the current samples
+
+
+
+temp.tissue <- as.vector(sample.key$Tissue.Specific)
+head(temp.tissue)
+
+for (row in 1:nrow(conversion)){
+  original.name <- as.character(unlist(conversion[row,][1]))
+  new.name <- as.character(unlist(conversion[row,][2]))
+  print(paste(original.name, 'to' , new.name))
+  print(length(temp.tissue[temp.tissue == original.name]))
+  temp.tissue <- gsub(original.name,new.name,temp.tissue, fixed = TRUE)
+  print(length(temp.tissue[temp.tissue == new.name]))
+}
+
+sample.key.new <- sample.key
+sample.key.new$Tissue.Specific <- as.factor(temp.tissue)
+summary(sample.key.new)
+
+summary(sample.key.new,50)
+write.csv(sample.key.new,'Z:/Data/Andrew/reference_data/gtex/Sample.key.sorted.csv', row.names = FALSE)
+sample.key.new <- read.csv('Z:/Data/Andrew/reference_data/gtex/Sample.key.sorted.csv',header=TRUE)
+
+ggplot() +
+  geom_point(data = med.v.sd.loose,aes(x = median, y = sd), size = 2, color = 'green4') +
+  geom_point(data = med.v.sd.neutral,aes(x = median, y = sd), size = 2, color = 'blue4') +
+  geom_point(data = med.v.sd.tight,aes(x = median, y = sd), size = 2, color = 'purple4') +
+  geom_point(data = med.v.sd.supertight,aes(x = median, y = sd), size = 2, color = 'red4') +
+  geom_abline(intercept = intercept.green, slope = slope.green, col = 'green', size = 0.5, linetype = 'dotted') +
+  geom_abline(intercept = intercept.blue, slope = slope.blue, col = 'blue', size = 0.5, linetype = 'dotted') +
+  geom_abline(intercept = intercept.purple, slope = slope.purple, col = 'purple', size = 0.5, linetype = 'dotted') +
+  geom_abline(intercept = intercept.red, slope = slope.red, col = 'red', size = 0.5, linetype = 'dotted') +
+  annotate("text", label = nrow(med.v.sd.loose), x = 1, y = 3, size = 5, colour = "green4") +
+  annotate("text", label = nrow(med.v.sd.neutral), x = 1.5, y = 2.6, size = 5, colour = "blue4") +
+  annotate("text", label = nrow(med.v.sd.tight), x = 2.5, y = 0.9, size = 5, colour = "purple4") +
+  annotate("text", label = nrow(med.v.sd.supertight), x = 3, y = 0.5, size = 5, colour = "red4") +
+  theme_light()
+
+write.csv(gtex.low.sd.supertight, 'Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/empty_table.csv')
