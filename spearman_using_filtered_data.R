@@ -30,6 +30,22 @@ spearman.calc <- function(sample, reference.input) {           # Calculate the s
   }
   return(spearman.results)
 }
+benchmark.calc <- function(spearman.results, target) {
+  benchmark.results <- data.frame(matrix(nrow = ncol(spearman.results), ncol = 4)) # Generate empty table for results
+  names(benchmark.results) <- c('Correct', 'Score', 'Discernment', 'Runner.up')
+  
+  for(sample.num in 1:ncol(spearman.results)) {                                # Loop through each sample in the results table
+    sample <- spearman.results[sample.num]                                     # Call the sample
+    target.match <- row.names(sample)[1] == target                             # Check each metric
+    target.score <- sample[1,]
+    runner.up.score <- sample[2,]
+    discernment <- target.score - runner.up.score
+    benchmark.row <- c(target.match,target.score,discernment,runner.up.score)  # Concatenate metrics
+    benchmark.results[sample.num,] <- benchmark.row
+  }
+  benchmark.results[1] <- as.logical(benchmark.results[,1])
+  return(benchmark.results)
+}
 
 ########################################################################
 ### Data input
@@ -63,102 +79,114 @@ references.supertight <- gtex.low.sd.supertight[2:ncol(gtex.low.sd.supertight)]
 ### Define a dataframe of just adult hypothalamus
 aHT <- TPMdata[c(7,8,9,10,12)]
 
-### Combine samples with references
-#shared.rows <- intersect(row.names(references.supertight),row.names(aHT))
-#spearman.input <- cbind(aHT[shared.rows,],references.supertight[shared.rows,])
+########################################################################
+### Generate lists
+
+### Generate sample list
+samples.list <- list(TPMdata[c(7,8,9,10,12)], TPMdata[5:6])
+names(samples.list) <- c('iMN_87iCTR', 'iMN_201iCTR')
+
+### Generate reference list
+references.list <- list(references.full, references.loose, references.neutral, references.tight, references.supertight)
+names(references.list) <- c('Ref.full', 'Ref.loose' ,'Ref.neutral', 'Ref. tight', 'Ref.supertight')
 
 ########################################################################
-### Spearman, full pairwise
+### Spearman, run through loops
 
-#spearman.results <- cor(spearman.input, method = 'spearman', use = 'complete.obs')
-spearman.results <- rcorr(as.matrix(spearman.input), type = 'spearman')[[1]]
-spearman.results <- round(spearman.results*100, 0)
+### Initialize empty results lists
+spearman.results.list <- list()
+benchmark.results.list <- list()
 
-spearman.results.trimmed <- spearman.results[,1:5]
-order.spearman.mean <- apply(spearman.results.trimmed, 1, mean)
-(spearman.results.trimmed <- spearman.results.trimmed[order(order.spearman.mean, decreasing = TRUE),])
+### Select samples --- Generate a list of samples to loop through
+samples <- samples.list[[1]]
+target <- 'Brain...Hypothalamus'
 
-########################################################################
-### Spearman, Loop through references
+### Loop through reference sets
+for(ref.set.num in 1:length(references.list)) {
+  
+  ### Specify current reference list and its name
+  reference.input <- references.list[[ref.set.num]]
+  
+  ###reference.input <- references.list[[1]]
+  reference.set.name <- names(references.list)[ref.set.num]
+  print(reference.set.name)  
 
-samples <- aHT
-references <- references.full
-
-reference.set.name <- 'Ref.full'
-
-spearman.results <- data.frame(rep(0,ncol(references)))
-row.names(spearman.results) <- names(references)
-names(spearman.results) <- names(samples)[1]
-
-for(sample.number in 1:ncol(samples)) {
-  print(sample.number)
-  spearman.results[sample.number] <- spearman.calc(samples[sample.number],references)
+  ### Initialize empty results table
+  spearman.results <- data.frame(rep(0,ncol(reference.input))) # Generate empty results table
+  row.names(spearman.results) <- names(reference.input)        # Name empty results table
+  names(spearman.results) <- names(sample)
+  
+  ### Calculate Spearman correlations
+  for(sample.number in 1:ncol(samples)) {
+    print(sample.number)
+    spearman.results[sample.number] <- spearman.calc(samples[sample.number],reference.input)
+  }
+  ### Reorder results
+  row.means <- apply(spearman.results,1,mean)
+  spearman.results <- spearman.results[order(row.means, decreasing = TRUE),]
+  
+  ### Add spearman results to list
+  spearman.results.list[[ref.set.num]] <- spearman.results
+  names(spearman.results.list)[ref.set.num] <- reference.set.name
+  
+  ### Benchmark results
+  benchmark.results <- benchmark.calc(spearman.results, target)
+  
+  ### Add benchmark results to list
+  benchmark.results.list[[ref.set.num]] <- benchmark.results
+  names(benchmark.results.list)[ref.set.num] <- reference.set.name
 }
 
-row.means <- apply(spearman.results,1,mean)
-spearman.results <- spearman.results[order(row.means, decreasing = TRUE),]
-spearman.results.trimmed <- as.matrix(spearman.results)
+### Check output
+str(spearman.results.list)
+str(benchmark.results.list)
+
+########################################################################
+### Summarize benchmark results
+
+### Summarize all benchmark results from list
+benchmark.summary <- data.frame(matrix(nrow = 1, ncol = 5))
+names(benchmark.summary) <- c('Correct', 'Score.med', 'Score.sd', 'Discern.min', 'Reliability')
+
+for(ref.set.num in 1:length(benchmark.results.list)) {
+  benchmark.results <- benchmark.results.list[[ref.set.num]]   # Call the current benchmark results table
+  reference.set.name <- names(benchmark.results.list)[ref.set.num]
+  print(reference.set.name)
+  
+  correct <- length(which(benchmark.results$Correct == 1))/nrow(benchmark.results) * 100  # Define metrics
+  score.med <- median(benchmark.results$Score)
+  score.sd <- round(sd(benchmark.results$Score),3)
+  discern.min <- min(benchmark.results$Discernment)
+  reliability <- length(which(benchmark.results$Score >= max(benchmark.results$Runner.up)))/nrow(benchmark.results) * 100
+  
+  benchmark.summary.row <- c(correct, score.med, score.sd, discern.min, reliability)
+  benchmark.summary[ref.set.num,] <- benchmark.summary.row
+  row.names(benchmark.summary)[ref.set.num] <- reference.set.name
+}
+benchmark.summary
 
 
 ########################################################################
 ### Generate heatmap
 
-heatmap.2(spearman.results.trimmed,
+spearman.results <- spearman.results.list[[2]]
+
+heatmap.2(as.matrix(spearman.results),
           main = title, # heat map title
-          cellnote = spearman.results.trimmed,
+          cellnote = spearman.results,
           notecol = "gray40",
           density.info="none",  # turns off density plot inside color legend
           notecex=0.7,
           trace="none",         # turns off trace lines inside the heat map
           distfun=dist,
-#          col = 
           breaks = 30,
           margins =c(4,12),     # widens margins around plot
           Rowv="FALSE",
           dendrogram="none"     # only draw a row dendrogram
 )
 
-########################################################################
-### Benchmark results
-
-### For each sample (make loop)
-target <- 'Brain...Hypothalamus'
-
-benchmark.results <- data.frame(matrix(nrow = ncol(spearman.results), ncol = 4))
-names(benchmark.results) <- c('Correct', 'Score', 'Discernment', 'Runner.up')
-
-for(sample.num in 1:ncol(spearman.results)) {
-  sample <- spearman.results[sample.num]
-  target.match <- row.names(sample)[1] == target
-  target.score <- sample[1,]
-  runner.up.score <- sample[2,]
-  discernment <- target.score - runner.up.score
-  benchmark.row <- c(target.match,target.score,discernment,runner.up.score)
-  benchmark.results[sample.num,] <- benchmark.row
-}
-benchmark.results[1] <- as.logical(benchmark.results[,1])
-benchmark.results
 
 
-
-
-### Summarize benchmark results
-benchmark.summary <- data.frame(matrix(nrow = 1, ncol = 5))
-names(benchmark.summary) <- c('Correct', 'Score.med', 'Score.sd', 'Discern.min', 'Reliability')
-
-correct <- min(benchmark.results$Correct) == 1
-score.med <- median(benchmark.results$Score)
-score.sd <- round(sd(benchmark.results$Score),3)
-discern.min <- min(benchmark.results$Discernment)
-reliability <- length(which(benchmark.results$Score >= max(benchmark.results$Runner.up)))/nrow(benchmark.results) * 100
-
-benchmark.summary.row <- c(correct, score.med, score.sd, discern.min, reliability)
-row <- 1
-benchmark.summary[row,] <- benchmark.summary.row
-benchmark.summary[1] <- as.logical(benchmark.summary[,1])
-
-row.names(benchmark.summary)[row] <- reference.set.name
-benchmark.summary
 
 
 
