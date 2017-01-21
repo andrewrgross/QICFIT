@@ -15,15 +15,15 @@ spearman.calc <- function(sample, reference.input) {           # Calculate the s
   for(ref.tissue.num in 1:ncol(reference.input)) {             # Loop through each reference 
     ref.tissue.data <- reference.input[ref.tissue.num]         # Call the current tissue from the references
     tissue <- names(ref.tissue.data)
-    ref.tissue.data <- ref.tissue.data[which(ref.tissue.data[,1]>0),,drop=FALSE] # Filter out missing values from tissue
-    genes.present.in.ref <- row.names(ref.tissue.data)         # Declare the genes present in the reference
+    ref.tissue.data.2 <- ref.tissue.data[which(ref.tissue.data[,1]>0),,drop=FALSE] # Filter out missing values from tissue
+    genes.present.in.ref <- row.names(ref.tissue.data.2)         # Declare the genes present in the reference
     genes.missing.in.query <- setdiff(genes.present.in.ref, row.names(sample)) # Declare genes in reference missing from sample
     rows.to.add <- data.frame(rep(0,length(genes.missing.in.query)))  # Generate a zero data frame the size of the missing rows 
     row.names(rows.to.add) <- genes.missing.in.query           # Name rows after missing rows
     names(rows.to.add) <- names(sample)                        # Name column the same as the query 
-    sample <- rbind(sample,rows.to.add)                        # Use rbind to make a full data frame containing exactly the genes in the reference
-    sample <- sample[genes.present.in.ref, , drop = FALSE]     # Reorder sample to match reference
-    spearman.input <- cbind(sample, ref.tissue.data)           # Bind sample and reference
+    sample.2 <- rbind(sample,rows.to.add)                        # Use rbind to make a full data frame containing exactly the genes in the reference
+    sample.3 <- sample.2[genes.present.in.ref, , drop = FALSE]     # Reorder sample to match reference
+    spearman.input <- cbind(sample.3, ref.tissue.data.2)           # Bind sample and reference
     result <- rcorr(as.matrix(spearman.input), type = 'spearman')[[1]] # Perform spearman calculation
     result <- round(result[2] * 100, 1)                        # Round result
     spearman.results[tissue,] <- result                        # Add to results table
@@ -58,23 +58,20 @@ gtex.low.sd.neutral <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.
 gtex.low.sd.tight <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.tight.csv', row.names = 1)
 gtex.low.sd.supertight <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.low.sd.supertight.csv', row.names = 1)
 
-### Import references
+### Import full references
 references <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)
 
-### Query Data
-### Normalized
-TPMdata <- read.csv("z://Data/RNAseq HT neurons and tissue/Andrews_files/20160317_Sareen_rerun-29299281.tpm.csv", row.names=1)
-metaData <- read.csv("z://Data/RNAseq HT neurons and tissue/2nd rerun/samples.csv", row.names=1)
-
+### Import known samples
+reference.transcriptomes <- read.csv('Z:/Data/Andrew/reference_data/gtex/individual-ref-transcriptomes-for-testing.csv', row.names = 1) # ~10 seconds
 
 ########################################################################
 ### Format
 
-references.full <- references[2:ncol(references)]
-references.loose <- gtex.low.sd.loose[2:ncol(gtex.low.sd.loose)]
-references.neutral <- gtex.low.sd.neutral[2:ncol(gtex.low.sd.neutral)]
-references.tight <- gtex.low.sd.tight[2:ncol(gtex.low.sd.tight)]
-references.supertight <- gtex.low.sd.supertight[2:ncol(gtex.low.sd.supertight)]
+ref.full <- references[2:ncol(references)]
+ref.loose <- gtex.low.sd.loose[2:ncol(gtex.low.sd.loose)]
+ref.neutral <- gtex.low.sd.neutral[2:ncol(gtex.low.sd.neutral)]
+ref.tight <- gtex.low.sd.tight[2:ncol(gtex.low.sd.tight)]
+ref.supertight <- gtex.low.sd.supertight[2:ncol(gtex.low.sd.supertight)]
 
 ### Define a dataframe of just adult hypothalamus
 aHT <- TPMdata[c(7,8,9,10,12)]
@@ -82,13 +79,29 @@ aHT <- TPMdata[c(7,8,9,10,12)]
 ########################################################################
 ### Generate lists
 
-### Generate sample list
-samples.list <- list(TPMdata[c(7,8,9,10,12)], TPMdata[5:6])
-names(samples.list) <- c('iMN_87iCTR', 'iMN_201iCTR')
+#samples.list <- list(TPMdata[c(7,8,9,10,12)], TPMdata[5:6])
+#names(samples.list) <- c('iMN_87iCTR', 'iMN_201iCTR')
+
+### Group reference transcriptomes into a list
+samples.list <- list()
+known.samples.names <- c()
+for(tissue.num in 1:40) {
+  pos.start <- ((tissue.num-1)*8)+2
+  pos.end <- pos.start
+  referenceColumns <- reference.transcriptomes[pos.start:(pos.start+7)]
+  samples.list[[tissue.num]] <- referenceColumns
+  known.samples.names <- c(known.samples.names,names(referenceColumns)[1])
+}
+names(samples.list) <- known.samples.names
+
+#samples.list <- list(reference.transcriptomes[122:124])
 
 ### Generate reference list
-references.list <- list(references.full, references.loose, references.neutral, references.tight, references.supertight)
+references.list <- list(ref.full, ref.loose, ref.neutral, ref.tight, ref.supertight)
 names(references.list) <- c('Ref.full', 'Ref.loose' ,'Ref.neutral', 'Ref. tight', 'Ref.supertight')
+
+### Define list of targets
+targets <- names(ref.full)[-c(24,25,31)]
 
 ########################################################################
 ### Spearman, run through loops
@@ -98,11 +111,14 @@ spearman.results.list <- list()
 benchmark.results.list <- list()
 
 ### Select samples --- Generate a list of samples to loop through
-samples <- samples.list[[1]]
-target <- 'Brain...Hypothalamus'
+selection <- 32
+samples <- samples.list[[selection]]
+names(samples)[1]
+(target <- targets[selection])
 
 ### Loop through reference sets
 for(ref.set.num in 1:length(references.list)) {
+    # ref.set.num <- 2
   
   ### Specify current reference list and its name
   reference.input <- references.list[[ref.set.num]]
@@ -123,7 +139,7 @@ for(ref.set.num in 1:length(references.list)) {
   }
   ### Reorder results
   row.means <- apply(spearman.results,1,mean)
-  spearman.results <- spearman.results[order(row.means, decreasing = TRUE),]
+  spearman.results <- spearman.results[order(row.means, decreasing = TRUE), , drop = FALSE]
   
   ### Add spearman results to list
   spearman.results.list[[ref.set.num]] <- spearman.results
@@ -138,8 +154,8 @@ for(ref.set.num in 1:length(references.list)) {
 }
 
 ### Check output
-str(spearman.results.list)
-str(benchmark.results.list)
+#str(spearman.results.list)
+#str(benchmark.results.list)
 
 ########################################################################
 ### Summarize benchmark results
@@ -163,24 +179,25 @@ for(ref.set.num in 1:length(benchmark.results.list)) {
   benchmark.summary[ref.set.num,] <- benchmark.summary.row
   row.names(benchmark.summary)[ref.set.num] <- reference.set.name
 }
-benchmark.summary
+print(benchmark.summary)
 
 
 ########################################################################
 ### Generate heatmap
 
-spearman.results <- spearman.results.list[[2]]
+spearman.results <- spearman.results.list[[1]]
 
 heatmap.2(as.matrix(spearman.results),
-          main = title, # heat map title
+          #main = title, # heat map title
           cellnote = spearman.results,
           notecol = "gray40",
           density.info="none",  # turns off density plot inside color legend
           notecex=0.7,
           trace="none",         # turns off trace lines inside the heat map
           distfun=dist,
+          lhei = c(1,5),
+          margins=c(10,12),
           breaks = 30,
-          margins =c(4,12),     # widens margins around plot
           Rowv="FALSE",
           dendrogram="none"     # only draw a row dendrogram
 )
@@ -204,38 +221,51 @@ heatmap.2(as.matrix(spearman.results),
 ### Perform comparison for given sample
 
 ### Select sample (replace with loop)
-sample <- aHT[1]
-reference.input <- references.full
+sample <- reference.transcriptomes[122]
+names(sample)
+reference.input <- ref.loose
 spearman.results <- data.frame(rep(0,53))
 row.names(spearman.results) <- names(references[2:54])
 
+### Perform Spearman comparison one-to-one for each column of reference input
 for(ref.tissue.num in 1:ncol(reference.input)) {
+  
   sample.temp <- sample
+  
+  #ref.tissue.num <- 16
+  
   ### Generate a data frame with only genes expressed in that tissue
   ref.tissue.data <- reference.input[ref.tissue.num]
   tissue <- names(ref.tissue.data)
   print(tissue)
   ref.tissue.data <- ref.tissue.data[which(ref.tissue.data[,1] >0), , drop = FALSE]
+  
   ### Declare the genes expressed in the reference tissue
   genes.present.in.ref <- row.names(ref.tissue.data)   # Declare a list of genes from reference
+
   ### Declare genes in reference missing from query
   genes.missing.in.query <- setdiff(genes.present.in.ref, row.names(sample.temp)) 
+
   ### Add missing rows to sample
   rows.to.add <- data.frame(rep(0,length(genes.missing.in.query)))  # Generate a zero data frame of correct size 
   row.names(rows.to.add) <- genes.missing.in.query  # Name rows after missing rows
   names(rows.to.add) <- names(sample.temp)  # Name column the same as the query 
   sample.temp <- rbind(sample.temp,rows.to.add)  # Use rbind to make a full data frame containing exactly the genes in the reference
+  
   ### Combine sample and reference
   sample.temp <- sample.temp[genes.present.in.ref, , drop = FALSE]
   spearman.input <- cbind(sample.temp, ref.tissue.data)
   spearman.result <- rcorr(as.matrix(spearman.input), type = 'spearman')[[1]]
   result.2 <- round(spearman.result[2] * 100, 1)
+  
   #spearman.result <- round(spearman.result * 100, 0)
   print(result.2)
   spearman.results[tissue,] <- result.2
 }
 
-spearman.results <- spearman.results[order(spearman.results, decreasing = TRUE), , drop = FALSE]
+(spearman.results <- spearman.results[order(spearman.results, decreasing = TRUE), , drop = FALSE])
+
+
 
 
 ### Formatting for benchmarking of full pairwise calculation

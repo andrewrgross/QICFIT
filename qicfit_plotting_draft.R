@@ -6,17 +6,31 @@
 ########################################################################
 
 library(ggplot2)
+library(RColorBrewer)
+library(colorRamps)
 
 ########################################################################
-### Functions
+### Palette
 ########################################################################
 
+start = 50
+end = 100
+nColors = (end - start) * 2
+my_palette <- rev(colorRampPalette(c("black","red","orange","yellow","white"))(n = nColors))
+my_palette <- rev(heat.colors(nColors))
+
+colors <- c("white","yellow","orange","red")
 
 ########################################################################
 ### Input
 ########################################################################
 
 node.coord <- read.csv("Z:/Data/RNAseq HT neurons and tissue/Andrews_files/pSI_files/templates for cytoscape/gtex-ggplot-full_node_coord.csv")
+dummy.data <- read.csv("C:/Users/grossar/Desktop/dummy data.csv")
+
+node.coord$value <- dummy.data$Average
+node.coord$source <- as.character(node.coord$source)
+node.coord$source[5] <- 'AN cingulate cortex'
 
 df <- mtcars[, c("mpg", "cyl", "wt")]
 df$cyl <- as.factor(df$cyl)
@@ -26,9 +40,15 @@ df$cyl <- as.factor(df$cyl)
 ########################################################################
 
 ggplot(data = node.coord, aes(x = x.position, y = -y.position)) + 
-  geom_point(color = 'black', fill = 'white', size = 12, shape = 22) +
-  geom_text(aes(label = source),nudge_y = -30, size = 3.2) +
-  theme_minimal()
+  geom_point(aes(fill = value), size = 10, shape = 22) +
+  scale_fill_gradientn(colors = c("white","white","yellow","orange", "red"), values = NULL, space = "Lab", na.value = "grey50", guide = "colourbar") +
+  geom_text(aes(label = source),nudge_y = -30, size = 5) +
+  geom_text(aes(label = value), size = 5.5, color = 'white') + 
+  theme_minimal() +
+  theme(panel.grid = element_blank(),axis.text = element_blank(),axis.title = element_blank(),legend.position = 'none')
+
+
+theme(panel.grid.minor = element_line(colour = "red", linetype = "dotted"))
 
 
 # Change colors and shapes manually
