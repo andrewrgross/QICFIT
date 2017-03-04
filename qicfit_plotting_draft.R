@@ -1,5 +1,6 @@
 ### Plotting QICFIT data -- Andrew R Gross
-
+### This script loads in the coordinates of the nodes used in cytoscape, then outputs a draft figure.
+### It can be used to test results during development.  Eventually, it will be refined to generate high quality graphics.
 
 ########################################################################
 ### Header
