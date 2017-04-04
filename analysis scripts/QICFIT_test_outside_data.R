@@ -5,7 +5,7 @@
 ########################################################################
 ### Header
 
-
+library(Hmisc)
 
 ########################################################################
 ### Functions
@@ -20,7 +20,7 @@ convertIDs <- function(dataframe) {
 }
 
 ########################################################################
-### Import
+### Import formatted data sets
 
 ### Fullwood 2015, GSE69360
 df.fullwood <- read.table("Z:/Data/Andrew/reference_data/geo/GSE69360/GSE69360_RNAseq.counts.txt", sep = '\t', header = TRUE, row.names = 1)
@@ -28,11 +28,34 @@ df.fullwood <- read.table("Z:/Data/Andrew/reference_data/geo/GSE69360/GSE69360_R
 ### Housekeeping genes
 housekeeping.genes <- as.character(read.csv('Z:/Data/Andrew/QICFIT/housekeeping.ids_3559.csv')[,1])
 
+df.fullwood
+
+### 
+df.yu <- read.csv('Z:/Data/Andrew/reference_data/geo/yu_GSE9440.csv', row.names = 1)
+
+
+### 
+df.han <- read.csv('Z:/Data/Andrew/reference_data/geo/han_GSE35108.csv', row.names = 1)
+
+### Normalized
+TPMdata <- read.csv("z://Data/RNAseq HT neurons and tissue/Andrews_files/20160317_Sareen_rerun-29299281.tpm.csv", row.names=1)
+
+
 ########################################################################
 ### Format
 
 df.fullwood <- df.fullwood[6:24]
 df.fullwood <- convertIDs(df.fullwood)
+
+
+### Replace row and column names
+sampleNames <- c("iHT_03iCTR","iHT_90iOBS","iHT_77iOBS","iHT_02iOBS","iMN_87iCTR","iMN_201iCTR","aHT_1662_S6","aHT_1838_S7","aHT_1843_S8","aHT_2266_S9","iHT_02iCTR_S13","aHT_2884_S11","21-Reference","iHT_87iCTR","iHT_201iCTR","iHT_25iCTR_S16","iHT_688iCTR_","iHT_80iCTR","iHT_74iOBS","iHT_03iOBS")
+names(TPMdata) <- sampleNames
+TPMdata <- convertIDs(TPMdata)
+### Remove 02iOBS and both iMN
+TPMdata[c("iHT_02iOBS","iMN_87iCTR","iMN_201iCTR","21-Reference")] <- NULL
+sampleNames <- c("iHT_03iCTR","iHT_90iOBS","iHT_77iOBS","aHT_1662","aHT_1838","aHT_1843","aHT_2266","iHT_02iCTR","aHT_2884","iHT_87iCTR","iHT_201iCTR","iHT_25iCTR","iHT_688iCTR","iHT_80iCTR","iHT_74iOBS","iHT_03iOBS")
+
 
 ### Remove Housekeeping genes from references
 test <- setdiff(row.names(ref.full),housekeeping.genes)
@@ -51,10 +74,14 @@ names(references.list) <- c('Ref.full', 'ref.full.pruned', 'Ref.loose', 'ref.loo
 ########################################################################
 ### Run test using Spearman
 
-column.num <- 5
-reference.df <- ref.loose.pruned
+column.num <- 11
+sample.data <- TPMdata[column.num]
+sample.data <- df.fullwood[column.num]
+sample.data <- df.yu[column.num]
+sample.data <- df.han[column.num]
+reference.df <- ref.full
 
-spearman.results <- spearman.calc(df.fullwood[column.num], reference.df)
+spearman.results <- spearman.calc(sample.data, reference.df)
 title <- names(spearman.results)[column.num]
 #spearman.results <- spearman.results[1]
 names(spearman.results) <- 'value'
@@ -72,7 +99,6 @@ g <- ggplot(data = spearman.results, aes(x = ref, y = value, fill = value)) +
   labs(title = row.names(spearman.results)[1],
        x = '',
        y = title)
-
 g
 
 

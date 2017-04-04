@@ -30,13 +30,6 @@ referenceNames <- c("Adipose, subcutaneous","Adipose, omentum","Adrenal gland","
                     "Pituitary","Prostate","Skin, sun-hidden","Skin, sun-exposed","Small intestine","Spleen","Stomach","Testis","Thyroid","Uterus","Vagina","Whole blood")
 
 ########################################################################
-### Edit transcriptome list
-### Remove entries without 10 samples
-
-#transcriptome.index <- transcriptome.index[-c(24,25,31),]
-#referenceNames <- referenceNames[-c(24,25,31)]
-
-########################################################################
 ### Prep dataframe
 
 selection <- 2
@@ -91,9 +84,7 @@ for(selection in 1:nrow(transcriptome.index)) {
   ### Add pared down columns to master dataframe
   
   testing.df <- cbind(testing.df, trans.df)
-  
 }
-
 
 ########################################################################
 ### Remove empty rows
@@ -122,5 +113,6 @@ for(tissueName in referenceNames) {
   
 }
 
-
-names(testing.df2) <- tissueNamesFull
+################################################################################################################################################
+################################################################################################################################################
+################################################################################################################################################
