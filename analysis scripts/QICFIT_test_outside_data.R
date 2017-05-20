@@ -1,11 +1,21 @@
 ### QICFIT test using outside data -- Andrew R Gross -- 2017-03-01
 ### This script is used to load and format data from other sources, then to test various recognition methods
-
+### This script reads in expression tables; converts the IDs to ENSEMBL; Loops through each transcriptome and does a Spearman check against references; and outputs figures and tables reporting
+### The similarity of each query to each of the GTEx references
 
 ########################################################################
 ### Header
 
 library(Hmisc)
+library(biomaRt)
+#listMarts(host="www.ensembl.org")
+ensembl = useMart(host='www.ensembl.org',biomart='ENSEMBL_MART_ENSEMBL')
+#listDatasets(ensembl)
+ensembl = useMart(host='www.ensembl.org',biomart='ENSEMBL_MART_ENSEMBL',dataset="hsapiens_gene_ensembl")
+filters = listFilters(ensembl)
+attributes = listAttributes(ensembl)
+filters[grep('uniprot', filters[,1]),]
+attributes[grep('pattern', attributes[,1])]
 
 ########################################################################
 ### Functions
@@ -19,8 +29,139 @@ convertIDs <- function(dataframe) {
   return(dataframe)
 }
 
+uniprot_gn.to.gene.name <- function(dataframe) {
+  ### Generate initial conversion table
+  conversion.df <- getBM(attributes=c('uniprot_gn','external_gene_name'), filters='uniprot_gn', values= row.names(dataframe), mart=ensembl)
+  unique.ids <- unique(conversion.df$uniprot_gn)
+  ### Identify the redundancy of each ID
+  redundancy.df <- data.frame(unique.ids, 'no.of.results' = rep('',length(unique.ids)), stringsAsFactors = FALSE)
+  for (row.num in 1:nrow(redundancy.df)) {
+    id = redundancy.df[row.num,][,1]
+    hits <- grep(id,conversion.df[,1])
+    redundancy.df[row.num,][2] <- length(hits)
+  }
+  ### Generate a df containing single-result IDs and multiple-result IDs
+  single.result.df <- data.frame('uniprot_gn' = c(), 'external_gene_name' = c(), stringsAsFactors = FALSE)
+  multiple.result.df <- data.frame('uniprot_gn' = c(), 'external_gene_name' = c(), stringsAsFactors = FALSE)
+  
+  for (row.num in 1:nrow(redundancy.df)) {
+    if (redundancy.df$no.of.results[row.num] == 1) {
+      row.to.add <- conversion.df[grep(redundancy.df$unique.ids[row.num], conversion.df$uniprot_gn),]
+      single.result.df <- rbind(single.result.df,row.to.add)
+    }
+    if (redundancy.df$no.of.results[row.num] > 1) {
+      all.gene.names <- conversion.df$external_gene_name[grep(redundancy.df$unique.ids[row.num], conversion.df$uniprot_gn)]
+      all.gene.names <- paste(all.gene.names, collapse = '-')
+      row.to.add <- data.frame('uniprot_gn' = redundancy.df$unique.ids[row.num], 'external_gene_name' = all.gene.names)
+      multiple.result.df <- rbind(multiple.result.df,row.to.add)    
+    }
+  }
+  ### Generate a df containing missing IDs
+  missing.ids <- setdiff(row.names(dataframe), conversion.df$uniprot_gn)
+  missing.result.df <- data.frame('uniprot_gn' = missing.ids, 'external_gene_name' = missing.ids)
+  ### Join dfs and reorder
+  conversion.df <- rbind(single.result.df, multiple.result.df, missing.result.df)
+  conversion.df <- conversion.df[match(row.names(dataframe),conversion.df$uniprot_gn),]
+  ### Convert old IDs to new IDs
+  converted.df <- dataframe
+  row.names(converted.df) <- conversion.df$external_gene_name
+  return(converted.df)
+}
+
 ########################################################################
-### Import formatted data sets
+### Import formatted data sets, references
+
+### Set working directory
+setwd("Z:/Data/Andrew/reference_data/qicfit_ready/")
+
+### Acquire list of available files
+metadata.df <- read.csv("METADATA.csv", stringsAsFactors = FALSE)
+(available.transcriptomes <- list.files("files with their original ids/"))
+
+### SELECT INPUT FILE
+selection.number <- 2
+(input.file <- available.transcriptomes[selection.number])
+#metadata.df[metadata.df$Author == "Uosaki",]
+
+### Import from available file list
+reference.data.df <- read.csv(paste0('files with their original ids/',input.file), stringsAsFactors = FALSE)
+
+### Import full references  -- The average expression of each tissue without filtering
+references <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)
+
+########################################################################
+### Convert IDs to ensembl
+
+### Identify correct input filter
+names(reference.data.df)[1]
+#filters[grep('u133', filters[,1]),]
+filters[grep('hugene', filters[,1]),]
+#attributes[grep('pattern', attributes[,1])]
+
+### Declare the input, output IDs, and IDs to convert
+#input.id <- 'affy_hg_u133_plus_2'
+input.id <- 'affy_hugene_1_0_st_v1'
+output.id <- 'ensembl_gene_id'
+current.ids <- reference.data.df[,1]
+
+### Generate initial conversion table
+conversion.df <- getBM(attributes=c(input.id, output.id), filters=input.id, values= current.ids, mart=ensembl) # ~60 s to run
+unique.ids <- unique(conversion.df[,1])
+head(unique.ids,30)
+
+### Match data to convesion table and join
+reference.data.df.reordered <- reference.data.df[match(conversion.df[,1],reference.data.df[,1]),]
+reference.data.df.reordered.appended <- cbind(conversion.df,reference.data.df.reordered)
+
+### Define list of ENsEMBL IDs and empty data frame to fill
+#reference.data.df.reordered.appended <- reference.data.df.reordered.appended[1:10,]
+ensembl.col <- reference.data.df.reordered.appended[,2]
+unique.ensembl.ids <- unique(reference.data.df.reordered.appended[,2])
+single.matches.df <- reference.data.df.reordered.appended[1,]
+
+### Copy a unique row for each ENSEMBL ID to a new data frame ### ~5 minutes
+for (id in unique.ensembl.ids) {
+  matches <- grep(id, ensembl.col)
+  temp.df <- reference.data.df.reordered.appended[matches,]
+  new.row <- apply(temp.df, 2, max)
+  single.matches.df <- rbind(single.matches.df, new.row)
+}
+
+### Rename rows based on ENSEMBL IDs; remove defunct rows/columns
+single.matches.df <- single.matches.df[2:nrow(single.matches.df),]
+row.names(single.matches.df) <- single.matches.df[,2]
+reference.data.df.converted <- single.matches.df[4:ncol(single.matches.df)]
+
+### Generate a list of missing ENSEMBL IDs
+missing.ids <- setdiff(row.names(references),row.names(reference.data.df.converted))
+absent.data.df <- data.frame(matrix(0,length(missing.ids), ncol(reference.data.df.converted)) )
+names(absent.data.df) <- names(reference.data.df.converted)
+row.names(absent.data.df) <- missing.ids
+
+### Join empty rows to query data with converted ENSEMBL IDs
+reference.data.df.converted.full <- rbind(reference.data.df.converted, absent.data.df)
+reference.data.df.converted.full <- reference.data.df.converted.full[sort(row.names(reference.data.df.converted.full)),]
+
+
+head(reference.data.df.converted.full,25)
+
+########################################################################
+### Write file with correct IDs
+
+getwd()
+
+(new.file.name <- paste0(substr(available.transcriptomes[1], 0, nchar(available.transcriptomes[1])-4), '_ID_CORR.csv'))
+
+write.csv(reference.data.df.converted.full, new.file.name)
+
+test <- read.csv(new.file.name, row.names = 1)
+
+
+
+
+
+########################################################################
+########################################################################
 
 ### Fullwood 2015, GSE69360
 df.fullwood <- read.table("Z:/Data/Andrew/reference_data/geo/GSE69360/GSE69360_RNAseq.counts.txt", sep = '\t', header = TRUE, row.names = 1)
@@ -74,12 +215,13 @@ names(references.list) <- c('Ref.full', 'ref.full.pruned', 'Ref.loose', 'ref.loo
 ########################################################################
 ### Run test using Spearman
 
-column.num <- 11
+column.num <- 4
 sample.data <- TPMdata[column.num]
 sample.data <- df.fullwood[column.num]
 sample.data <- df.yu[column.num]
 sample.data <- df.han[column.num]
 reference.df <- ref.full
+sample.data <- test[column.num]
 
 spearman.results <- spearman.calc(sample.data, reference.df)
 title <- names(spearman.results)[column.num]

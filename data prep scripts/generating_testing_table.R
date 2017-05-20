@@ -1,5 +1,8 @@
 ### Transcriptome Preprocessing -- Andrew R Gross -- 2016/12/02
 ### Make minor edits to formatting and begin identifying key genes
+### Read in a list of GTEx transcriptomes; Open them, then output a subset of 8 for each tissue, formatted for easy reading and data handling.
+### Input: List of full transcriptome files, GTEx transcriptomes.
+### Output: Subset of GTEx data with minor formatting corrections.
 
 ########################################################################
 ### Functions
