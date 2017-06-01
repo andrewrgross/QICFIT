@@ -68,6 +68,15 @@ uniprot_gn.to.gene.name <- function(dataframe) {
   return(converted.df)
 }
 
+drop.decimals <- function(input.dataframe) {
+  input.id <- input.dataframe[,1]
+  temp.id <- strsplit(input.id, '.', fixed = TRUE)
+  output.id <- c()
+  for (id in temp.id) {output.id <- c(output.id, id[1])}
+  row.names(input.dataframe) <- output.id
+  input.dataframe <- input.dataframe[2:ncol(input.dataframe)]
+  return(input.dataframe)
+}
 ########################################################################
 ### Import formatted data sets, references
 
@@ -79,7 +88,7 @@ metadata.df <- read.csv("METADATA.csv", stringsAsFactors = FALSE)
 (available.transcriptomes <- list.files("files with their original ids/"))
 
 ### SELECT INPUT FILE
-selection.number <- 2
+selection.number <- 12
 (input.file <- available.transcriptomes[selection.number])
 #metadata.df[metadata.df$Author == "Uosaki",]
 
@@ -92,22 +101,34 @@ references <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gt
 ########################################################################
 ### Convert IDs to ensembl
 
+### Drop Decimal on ENSEMBL IDs
+#reference.data.df.converted.full <- drop.decimals(reference.data.df)
+
 ### Identify correct input filter
 names(reference.data.df)[1]
+head(reference.data.df[1:4])
 #filters[grep('u133', filters[,1]),]
-filters[grep('hugene', filters[,1]),]
-#attributes[grep('pattern', attributes[,1])]
+#filters[grep('hugene', filters[,1]),]
+length(filters[grep('gene', filters[,1]),])
+filters[grep('illumina', filters[,1]),]
+#attributes[grep('ucsc', attributes[,1]),]
 
 ### Declare the input, output IDs, and IDs to convert
-#input.id <- 'affy_hg_u133_plus_2'
-input.id <- 'affy_hugene_1_0_st_v1'
+input.id <- 'affy_hg_u133_plus_2'
+#input.id <- 'affy_hugene_1_0_st_v1'
+#input.id <- 'with_ucsc'
+input.id <- 'wikigene_name'
+#input.id <- 'entrezgene'
 output.id <- 'ensembl_gene_id'
-current.ids <- reference.data.df[,1]
+current.ids <- reference.data.df[,1][1:30]
 
 ### Generate initial conversion table
 conversion.df <- getBM(attributes=c(input.id, output.id), filters=input.id, values= current.ids, mart=ensembl) # ~60 s to run
 unique.ids <- unique(conversion.df[,1])
+
+### Report stats on initial conversion table
 head(unique.ids,30)
+print(paste(round(length(unique.ids)/length(current.ids),2)*100, 'percent of IDs recognized'))
 
 ### Match data to convesion table and join
 reference.data.df.reordered <- reference.data.df[match(conversion.df[,1],reference.data.df[,1]),]
@@ -150,7 +171,7 @@ head(reference.data.df.converted.full,25)
 
 getwd()
 
-(new.file.name <- paste0(substr(available.transcriptomes[1], 0, nchar(available.transcriptomes[1])-4), '_ID_CORR.csv'))
+(new.file.name <- paste0(substr(available.transcriptomes[selection.number], 0, nchar(available.transcriptomes[selection.number])-4), '_ID_CORR.csv'))
 
 write.csv(reference.data.df.converted.full, new.file.name)
 
