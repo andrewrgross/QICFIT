@@ -22,7 +22,11 @@ relevant gene identifier
 I want to identify the genes with the greatest relevance to the low Spearman correlation, then screen out housekeeping genes.
 This script is an evolution of the manual Spearman calculation method.  It applies components of a manual Spearman correlation calculation in order to present genes which were most responsible for the divergence of the sample and its closest match.
 
+<<<<<<< HEAD:analysis scripts/README.md.txt
 
 spearman_using_filtered_data
 ### Spearman comparison using filtered data -- Andrew R Gross -- 2016/12/16 
 This script uses GTEx data as the input for testing various strategies of recognizing samples and displaying results.  It is an early attempt at calculating Spearman values which used filtered datasets, the use of which have since been indefinitely discontinued in favor of using full datasets.
+=======
+spearman_using_filtered_data
+>>>>>>> d20730591d5e7f3fc62ed5bc9cd605dfdb6c6a48:analysis scripts/README.md
