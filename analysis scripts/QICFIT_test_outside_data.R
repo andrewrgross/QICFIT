@@ -77,6 +77,91 @@ drop.decimals <- function(input.dataframe) {
   input.dataframe <- input.dataframe[2:ncol(input.dataframe)]
   return(input.dataframe)
 }
+ 
+spearman.calc <- function(sample, reference.input) {           # Calculate the spearman correlation between the sample and the references
+  spearman.results <- data.frame(rep(0,ncol(reference.input))) # Generate empty results table
+  row.names(spearman.results) <- names(reference.input)        # Name empty results table
+  names(spearman.results) <- names(sample)
+  for(ref.tissue.num in 1:ncol(reference.input)) {             # Loop through each reference 
+    ref.tissue.data <- reference.input[ref.tissue.num]         # Call the current tissue from the references
+    tissue <- names(ref.tissue.data)
+    ref.tissue.data.2 <- ref.tissue.data[which(ref.tissue.data[,1]>0),,drop=FALSE] # Filter out missing values from tissue
+    genes.present.in.ref <- row.names(ref.tissue.data.2)         # Declare the genes present in the reference
+    genes.missing.in.query <- setdiff(genes.present.in.ref, row.names(sample)) # Declare genes in reference missing from sample
+    rows.to.add <- data.frame(rep(0,length(genes.missing.in.query)))  # Generate a zero data frame the size of the missing rows 
+    row.names(rows.to.add) <- genes.missing.in.query           # Name rows after missing rows
+    names(rows.to.add) <- names(sample)                        # Name column the same as the query 
+    sample.2 <- rbind(sample,rows.to.add)                        # Use rbind to make a full data frame containing exactly the genes in the reference
+    sample.3 <- sample.2[genes.present.in.ref, , drop = FALSE]     # Reorder sample to match reference
+    spearman.input <- cbind(sample.3, ref.tissue.data.2)           # Bind sample and reference
+    result <- rcorr(as.matrix(spearman.input), type = 'spearman')[[1]] # Perform spearman calculation
+    result <- round(result[2], 5)                        # Round result
+    spearman.results[tissue,] <- result                        # Add to results table
+  }
+  return(spearman.results)
+}
+spearman.calc.for.multiple.samples <- function(samples, reference.input) {
+  ### Initialize empty results table
+  spearman.results <- data.frame(rep(0,ncol(reference.input))) # Generate empty results table
+  names(spearman.results) <- names(samples)[1]                 # Name empty results table
+  row.names(spearman.results) <- names(reference.input)        # Name empty results table
+  
+  ### Calculate Spearman correlations
+  for(sample.number in 1:ncol(samples)) {                      # Loop through all 8 samples
+    spearman.results[sample.number] <- spearman.calc(samples[sample.number],reference.input)
+  }
+  
+  ### Reorder results
+  row.means <- apply(spearman.results,1,mean)                  # Calculate the average score for a tissue across all 8 samples
+  spearman.results <- spearman.results[order(row.means, decreasing = TRUE), , drop = FALSE] # Order the results from highest average tissue to lowest
+}
+### Plot single boxplot from results table function
+plot.tissue.match.boxplot <- function(spearman.results, title) {
+  
+  ### Reshape data for compatibility with geom_boxplot
+  new.col <- ncol(spearman.results)+1 
+  spearman.results[new.col] <- row.names(spearman.results)                    # Add the tissues as a new row
+  names(spearman.results)[new.col] <- 'ref'                                   # Label the new row
+  spearman.t <- t(spearman.results[-new.col])                                 # Transpose the data frame, minus new row
+  spearman.melt <- melt(spearman.t)                                     # Melt transposed data frame
+  names(spearman.melt) <- c("sample","ref","value")                     # Rename columns of melted data frame
+  spearman.melt$ref <- factor(spearman.melt$ref, levels = rev(row.names(spearman.results)), ordered = TRUE) # Assign order
+  
+  ### Generate data frame for color and label data
+  spearman.for.color <- spearman.results                                # Duplicate spearman results
+  spearman.for.color[-new.col] <- apply(spearman.for.color[-new.col], 1, mean)    # Reassign all values to mean of group
+  names(spearman.for.color)[2] = 'color.val'
+  spearman.t <- t(spearman.for.color[-new.col])                               # Transpose again
+  spearman.melt.color <- melt(spearman.t)                               # Melt again
+  spearman.melt$color <- spearman.melt.color$value                      # Copy repeating values as 'color column to main df
+  
+  g <- ggplot(data = spearman.melt, aes(x = ref, y = value)) +
+    geom_boxplot(fill = 'red') +
+    coord_flip() +
+    scale_y_continuous(limits = c(0.49,0.76), position = 'right', breaks = c(0.5, 0.55, 0.6, 0.65, 0.7, 0.75), labels = c('0.5','','0.6','','0.7',''), expand = c(0,0)) +
+    theme(axis.ticks.y = element_blank(),
+          legend.position = 'none', panel.background = element_rect(fill = 'grey99',size = 2, linetype = 'solid', color = 'black'),
+          plot.title = element_text(size = 14, face = 'bold', margin = margin(5,0,5,0), hjust = 0.5)) +
+    labs(title = title,
+         x = 'Reference Tissues from GTEx',
+         y = 'Spearman correlation') #+ geom_text(data = spearman.for.color, aes(x = ref, y = color.val-0.25, label = ref), hjust = 0)
+  return(g)
+}
+### Plot multiplot with all five filter levels
+multiplot.spearman.results.list <- function(spearman.results.list) {
+  boxplot.list <- list()
+  filter.levels <- c('Full', 'Loose', 'Neutral', 'Tight', 'Supertight')
+  level.num = 1
+  for (spearman.results in spearman.results.list) {
+    filter.level = filter.levels[level.num]
+    level.num <- level.num + 1
+    boxplot.list[[length(boxplot.list)+1]] <- plot.tissue.match.boxplot(spearman.results, filter.level)
+  }
+  print('All figures complete')
+  multiboxplot <- plot_grid(boxplot.list[[1]], boxplot.list[[2]], boxplot.list[[3]], boxplot.list[[4]], boxplot.list[[5]], labels=c("F", "L", "N", "T", "ST"), ncol = 5, nrow = 1)
+  #multiboxplot <- multiplot(boxplot.list[[1]], boxplot.list[[2]], boxplot.list[[3]], boxplot.list[[4]], boxplot.list[[5]], cols = 5)
+  return(multiboxplot)
+}
 ########################################################################
 ### Import formatted data sets, references
 
