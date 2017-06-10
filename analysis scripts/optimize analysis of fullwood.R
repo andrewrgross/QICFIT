@@ -8,6 +8,7 @@ library(Hmisc)
 library(biomaRt)
 library(ggplot2)
 library(reshape2)
+library(gridExtra)
 
 ########################################################################
 ### Functions
@@ -44,10 +45,11 @@ spearman.calc.for.multiple.samples <- function(samples, reference.input) {
   for(sample.number in 1:ncol(samples)) {                      # Loop through all 8 samples
     spearman.results[sample.number] <- spearman.calc(samples[sample.number],reference.input)
   }
+  spearman.results <- round(spearman.results*100,0)
   
   ### Reorder results
   row.means <- apply(spearman.results,1,mean)                  # Calculate the average score for a tissue across all 8 samples
-  spearman.results <- spearman.results[order(row.means, decreasing = TRUE), , drop = FALSE] # Order the results from highest average tissue to lowest
+  return <- spearman.results[order(row.means, decreasing = TRUE), , drop = FALSE] # Order the results from highest average tissue to lowest
 }
 ### Plot single boxplot from results table function
 plot.tissue.match.boxplot <- function(spearman.results, title) {
@@ -117,7 +119,7 @@ fw.stomach.df <- fullwood.df[grep('stomach', samples.metadata$Tissue)]
 
 
 ### Import references  -- The average expression of each tissue without filtering
-references <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)
+reference.df <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)[2:54]
 
 ### Import individual reference transcriptomes for testing (sets of 8 from GTEx)
 individual.transcriptomes.df <- read.csv('Z:/Data/Andrew/reference_data/gtex/individual-ref-transcriptomes-for-testing.csv', row.names = 1)
@@ -134,37 +136,77 @@ gtex.stomach.df <- individual.transcriptomes.df[354:361]
 ### Generate df lists to select from
 
 fw.samples.list <- list(fw.colon.df, fw.heart.df, fw.kidney.df, fw.liver.df, fw.lung.df, fw.stomach.df)
+names(fw.samples.list) <- c('fw.colon', 'fw.heart', 'fw.kidney', 'fw.liver', 'fw.lung', 'fw.stomach')
+gtex.samples.list <- list(gtex.colon.df, gtex.heart.df, gtex.kidney.df, gtex.liver.df, gtex.lung.df, gtex.stomach.df)
+names(gtex.samples.list) <- c('gtex.colon', 'gtex.heart', 'gtex.kidney', 'gtex.liver', 'gtex.lung', 'gtex.stomach')
 
 ########################################################################
 ### Approach 1: Simple Spearman analysis
 ### Generate Spearman profile for each sample
 
+tissue.selection <- 6
+
 ### Select Fullwood tissue to analyze
-samples.df <- fw.samples.list[[1]]
+#samples.df <- fw.samples.list[[tissue.selection]]; tissue.name <- names(fw.samples.list)[tissue.selection]
+samples.df <- gtex.samples.list[[tissue.selection]]; tissue.name <- names(gtex.samples.list)[tissue.selection]
 print(names(samples.df)[1])
 reference.input <- reference.df
 
 ### Calculate Spearman coefficents
 spearman.results <- spearman.calc.for.multiple.samples(samples.df, reference.input)
 
+########################################################################
+### New plot type: heat map of individual samples
+plot.list <- list()
+for (column in 1:ncol(spearman.results)) {
+
+spearman.for.plot <- spearman.results[1:20,][column]
+spearman.for.plot <- spearman.for.plot[order(spearman.for.plot[1], decreasing = TRUE),, drop = FALSE]
+spear.m <- melt(as.matrix(spearman.for.plot))
+spear.m$Var1 <- factor(spear.m$Var1, levels = rev(as.character(row.names(spearman.for.plot))))
+spear.m$label <- paste0(spear.m$value, '-', spear.m$Var1)
+
+## Plot heatmap
+plot <- ggplot(data = spear.m, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = label), size = 3) +
+  scale_fill_gradient(low = 'white', high = 'red') +
+  #ggtitle(as.character(dataset.metadata[selection.number,][,1])) + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 1), 
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position="none")
+plot.list[column] <- list(plot)
+}
+
+### Convert plot list to list of graphic objects (grobs)
+grob.list <- lapply(plot.list, ggplotGrob)
+
+### Plot grob.list
+grid.arrange(grobs = grob.list, ncol = ncol(spearman.results), top = tissue.names[1])
+
+
+
+
+
+#grid.arrange(a, a, ncol=2, top = "Main title")
+
+########################################################################
+
 ### Format results for heatmap
 (spearman.for.plot <- spearman.results[c(1,2,3,4,5,6,7,8,10,12,14,16,18,22,26,30,35,40,50),])
 spear.m <- melt(as.matrix(spearman.for.plot))
-spear.m$X1 <- factor(spear.m$Var1, levels = rev(as.character(row.names(spearman.for.plot))))
+spear.m$Var1 <- factor(spear.m$Var1, levels = rev(as.character(row.names(spearman.for.plot))))
 
 ### Plot heatmap
 ggplot(data = spear.m, aes(x = Var2, y = Var1, fill = value)) +
   geom_tile() +
-  geom_text(aes(label = round(value*100, 0)), size = 3) +
+  geom_text(aes(label = value), size = 3) +
   scale_fill_gradient(low = 'white', high = 'red') +
   #ggtitle(as.character(dataset.metadata[selection.number,][,1])) + 
   theme(axis.text.x = element_text(angle = -90, hjust = 1))
 
-
-
-
-
-########################################################################
 ########################################################################
 ########################################################################
 
