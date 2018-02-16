@@ -7,3 +7,4 @@ QICFIT works by performing a Spearman rank correlation between an RNA-seq transc
 Currently, QICFIT is an in-house tool used by the Sareen lab to assess the success of stem cell differentiation protocols in maturing pluripotenet stem cells into differentiated cells.  As such, I have no composed a user guide or tested QICFIT under a range of conditions and data types.  If you would like to use QICFIT or assist in its development, feel free to email me.
 
 #
+![alt text](https://raw.githubusercontent.com/username/projectname/branch/path/to/img.png)
