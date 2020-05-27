@@ -29,7 +29,7 @@ library(gridExtra)
 #' spearman.corr.for.single.sample()
 
 spearman.corr.for.single.sample <- function(query.df, ref.df) {   # Calculate the spearman correlation between the query.df and the references
-  spearman.results <- data.frame(rep(0,ncol(reference.input)))                             # Generate empty results table
+  spearman.results <- data.frame(rep(0,ncol(ref.df)))                             # Generate empty results table
   row.names(spearman.results) <- names(ref.df)                                # Name empty results table
   names(spearman.results) <- names(query.df)
 

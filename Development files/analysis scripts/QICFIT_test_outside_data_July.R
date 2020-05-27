@@ -9,7 +9,7 @@ library(biomaRt)
 library(ggplot2)
 library(reshape2)
 library(gridExtra)
-library(QICFIT)
+library(QICFIT, lib.loc = "C:/Users/grossar/Documents/GitHub/QICFIT/package 3")
 
 ########################################################################
 ### Functions
@@ -18,14 +18,17 @@ library(QICFIT)
 ### Import Data
 
 ### Import dataset and sample metadata -- Dataset metadata contains filepath for all available samples
-samples.metadata <- read.csv('Z:/Data/Andrew/reference_data/qicfit_ready/METADATA_samples.csv')                    # Import sample metadata
-dataset.metadata <- read.csv('Z:/Data/Andrew/reference_data/qicfit_ready/METADATA_datasets.csv')                   # Import dataset metadata
+samples.metadata <- read.csv('Z:/Data - DEPRECIATED/Andrew/reference_data/qicfit_ready/METADATA_samples.csv')                    # Import sample metadata
+dataset.metadata <- read.csv('Z:/Data - DEPRECIATED/Andrew/reference_data/qicfit_ready/METADATA_datasets.csv')                   # Import dataset metadata
+
+
 
 ### Import references  -- The average expression of each tissue without filtering
-ref.df <- read.csv('Z:/Data/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)[2:54]
+ref.df <- read.csv('Z:/Data - DEPRECIATED/Andrew/reference_data/gtex/sd.filtered.tables/gtex.full.csv',header=TRUE,row.names=1)[2:54]
 
 ### Import individual reference transcriptomes for testing (sets of 8 from GTEx)
-#gtex.transcriptomes.df <- read.csv('Z:/Data/Andrew/reference_data/gtex/individual-ref-transcriptomes-for-testing.csv', row.names = 1)
+gtex.transcriptomes.df <- read.csv('Z:/Data - DEPRECIATED/Andrew/reference_data/gtex/individual-ref-transcriptomes-for-testing.csv', row.names = 1)
+individual.transcriptomes.df <- gtex.transcriptomes.df
 
 ########################################################################
 ### Select and import data from list of available datasets
@@ -37,7 +40,7 @@ print(dataset.metadata[c(1,2,5,6,7,8,9,10)])
 dataset.num <- 9              ###---+++---+++---### USER INPUT GOES HERE ###---+++---+++---###
 
 ### Load selected dataset
-user.dataset <- read.csv(paste0('Z:/Data/Andrew/reference_data/qicfit_ready/', dataset.metadata$file_corrected[dataset.num]), row.names = 1)
+user.dataset <- read.csv(paste0('Z:/Data - DEPRECIATED/Andrew/reference_data/qicfit_ready/', dataset.metadata$file_corrected[dataset.num]), row.names = 1)
 print(head(user.dataset,4))
 
 ########################################################################
@@ -51,7 +54,7 @@ print(dataset.metadata[c(1,2,4,5,6)])
 ### Select samples from within datasets
 
 ### Subset Fullwood data by tissue
-fullwood.df <- read.csv('Z:/Data/Andrew/reference_data/qicfit_ready/GSE69360-fullwood_ID_CORR.csv', row.names = 1)
+fullwood.df <- read.csv('Z:/Data - DEPRECIATED/Andrew/reference_data/qicfit_ready/GSE69360-fullwood_ID_CORR.csv', row.names = 1)
 fw.colon.df <- fullwood.df[grep('colon', samples.metadata$Tissue)]
 fw.heart.df <- fullwood.df[grep('heart', samples.metadata$Tissue)]
 fw.kidney.df <- fullwood.df[grep('kidney', samples.metadata$Tissue)]
@@ -75,7 +78,7 @@ gtex.stomach.df <- individual.transcriptomes.df[354:361]
 query.list <- list(gtex.colon.s.df, gtex.colon.t.df, gtex.heart.a.df, gtex.heart.b.df, gtex.kidney.df, gtex.liver.df, gtex.lung.df, gtex.stomach.df, fw.colon.df, fw.heart.df, fw.kidney.df, fw.liver.df, fw.lung.df, fw.stomach.df)
 names(query.list) <- c('gtex.colon.sig', 'gtex.colon.tran','gtex.heart a', 'gtex.heart b', 'gtex.kidney', 'gtex.liver', 'gtex.lung', 'gtex.stomach', 'fw.colon', 'fw.heart', 'fw.kidney', 'fw.liver', 'fw.lung', 'fw.stomach')
 
-reference.input <- reference.df
+reference.input <- ref.df
 
 ########################################################################
 ### Generate Spearman profile for each sample
